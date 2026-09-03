@@ -1,9 +1,17 @@
 export type ChatRole = 'user' | 'assistant'
 
+export interface Attachment {
+  id: string
+  name: string
+  /** A base64 data URL; PDF pages are rasterised to JPEG before they get here. */
+  dataUrl: string
+}
+
 export interface ChatMessage {
   id: string
   role: ChatRole
   content: string
+  attachments?: Attachment[]
   reasoning?: string
   notice?: string
 }
@@ -23,9 +31,13 @@ export interface GenerationSettings {
   enableThinking: boolean
 }
 
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface ApiMessage {
   role: 'system' | ChatRole
-  content: string
+  content: string | ContentPart[]
 }
 
 export interface ChatCompletionRequest {

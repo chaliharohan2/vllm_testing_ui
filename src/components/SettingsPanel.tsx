@@ -66,11 +66,13 @@ export function SettingsPanel({
               type="password"
               value={settings.apiKey}
               onChange={(event) => update('apiKey', event.target.value)}
-              placeholder="Required"
+              placeholder="Leave empty if the server has no key"
               autoComplete="off"
               disabled={disabled}
             />
-            <small>Sent as a Bearer token. Kept in memory only.</small>
+            <small>
+              Sent as a Bearer token when set. Kept in memory only.
+            </small>
           </label>
 
           <label>

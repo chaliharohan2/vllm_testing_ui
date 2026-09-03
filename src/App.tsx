@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchModels, streamChat } from './api/vllm'
+import { Markdown } from './components/Markdown'
 import { SettingsPanel } from './components/SettingsPanel'
-import type { ChatMessage, GenerationSettings } from './types'
+import { attachmentsFromFile, MAX_PDF_PAGES } from './lib/attachments'
+import type { Attachment, ChatMessage, GenerationSettings } from './types'
 import './styles.css'
 
 const initialSettings: GenerationSettings = {
@@ -33,10 +35,14 @@ function App() {
     'idle' | 'loading' | 'error'
   >('idle')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [streamingId, setStreamingId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [error, setError] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [isAttaching, setIsAttaching] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadModels = useCallback(
     async (
@@ -63,14 +69,11 @@ function App() {
   )
 
   useEffect(() => {
-    const apiKey = settings.apiKey.trim()
-    if (!apiKey) return
-
     const controller = new AbortController()
     const timeout = window.setTimeout(() => {
       // Loading models is an intentional external-system synchronization.
       // oxlint-disable-next-line react/set-state-in-effect
-      void loadModels(apiKey, controller.signal, false)
+      void loadModels(settings.apiKey, controller.signal, false)
     }, 350)
 
     return () => {
@@ -92,16 +95,42 @@ function App() {
     setMessages([])
     setDraft('')
     setError('')
+    setAttachments([])
   }
+
+  const addFiles = async (files: File[]) => {
+    if (!files.length) return
+
+    setIsAttaching(true)
+    setError('')
+    try {
+      for (const file of files) {
+        const { attachments: added, omittedPages } =
+          await attachmentsFromFile(file)
+        setAttachments((current) => [...current, ...added])
+        if (omittedPages) {
+          setError(
+            `${file.name} has ${omittedPages} more page${
+              omittedPages === 1 ? '' : 's'
+            }; only the first ${MAX_PDF_PAGES} were attached.`,
+          )
+        }
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : 'Could not read that file.',
+      )
+    } finally {
+      setIsAttaching(false)
+    }
+  }
+
+  const removeAttachment = (id: string) =>
+    setAttachments((current) => current.filter((item) => item.id !== id))
 
   const sendMessage = async () => {
     const content = draft.trim()
-    if (!content || isGenerating) return
-    if (!settings.apiKey.trim()) {
-      setError('Enter a vLLM API key in settings before sending a message.')
-      setSettingsOpen(true)
-      return
-    }
+    if ((!content && !attachments.length) || isGenerating) return
     if (!settings.model.trim()) {
       setError('Choose or enter a model ID before sending a message.')
       setSettingsOpen(true)
@@ -112,6 +141,7 @@ function App() {
       id: makeId(),
       role: 'user',
       content,
+      ...(attachments.length ? { attachments } : {}),
     }
     const assistantId = makeId()
     const assistantMessage: ChatMessage = {
@@ -127,8 +157,10 @@ function App() {
 
     abortRef.current = controller
     setDraft('')
+    setAttachments([])
     setError('')
     setIsGenerating(true)
+    setStreamingId(assistantId)
     setMessages([...context, assistantMessage])
 
     const updateAssistant = (patch: Partial<ChatMessage>) =>
@@ -181,8 +213,11 @@ function App() {
         )
       }
     } finally {
-      if (abortRef.current === controller) abortRef.current = null
-      setIsGenerating(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setIsGenerating(false)
+        setStreamingId('')
+      }
     }
   }
 
@@ -245,53 +280,78 @@ function App() {
             </div>
           ) : (
             <div className="message-list">
-              {messages.map((message) => (
-                <article
-                  className={`message message-${message.role}`}
-                  key={message.id}
-                >
-                  <div className="message-avatar" aria-hidden="true">
-                    {message.role === 'user' ? 'You' : 'v'}
-                  </div>
-                  <div className="message-body">
-                    <strong>
-                      {message.role === 'user' ? 'You' : settings.model}
-                    </strong>
-                    {message.reasoning && (
-                      <details className="reasoning-block">
-                        <summary>
-                          Reasoning
-                          {isGenerating && !message.content
-                            ? ' (thinking…)'
-                            : ''}
-                        </summary>
-                        <div className="reasoning-content">
-                          {message.reasoning}
-                        </div>
-                      </details>
-                    )}
-                    <div className="message-content">
-                      {message.content ||
-                        (isGenerating && message.role === 'assistant' ? (
+              {messages.map((message) => {
+                const isStreaming =
+                  isGenerating && message.id === streamingId
+                return (
+                  <article
+                    className={`message message-${message.role}`}
+                    key={message.id}
+                  >
+                    <div className="message-avatar" aria-hidden="true">
+                      {message.role === 'user' ? 'You' : 'v'}
+                    </div>
+                    <div className="message-body">
+                      <strong>
+                        {message.role === 'user' ? 'You' : settings.model}
+                      </strong>
+                      {message.attachments?.length ? (
+                        <ul className="message-attachments">
+                          {message.attachments.map((attachment) => (
+                            <li key={attachment.id}>
+                              <a
+                                href={attachment.dataUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <img
+                                  src={attachment.dataUrl}
+                                  alt={attachment.name}
+                                />
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {message.reasoning && (
+                        <details className="reasoning-block">
+                          <summary>
+                            Reasoning
+                            {isStreaming && !message.content
+                              ? ' (thinking…)'
+                              : ''}
+                          </summary>
+                          <div className="reasoning-content">
+                            {message.reasoning}
+                          </div>
+                        </details>
+                      )}
+                      <div
+                        className={`message-content ${
+                          isStreaming ? 'is-streaming' : ''
+                        }`}
+                      >
+                        {message.content ? (
+                          message.role === 'assistant' ? (
+                            <Markdown content={message.content} />
+                          ) : (
+                            <p className="plain-text">{message.content}</p>
+                          )
+                        ) : isStreaming ? (
                           <span className="typing-indicator">
                             <i />
                             <i />
                             <i />
                           </span>
-                        ) : null)}
-                      {isGenerating &&
-                        message.role === 'assistant' &&
-                        message === messages[messages.length - 1] &&
-                        message.content && (
-                          <span className="stream-cursor" aria-hidden="true" />
-                        )}
+                        ) : null}
+                      </div>
+                      {message.notice && (
+                        <p className="message-notice">{message.notice}</p>
+                      )}
                     </div>
-                    {message.notice && (
-                      <p className="message-notice">{message.notice}</p>
-                    )}
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              })}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -310,45 +370,111 @@ function App() {
               </button>
             </div>
           )}
-          <div className="composer">
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  void sendMessage()
-                }
-              }}
-              rows={1}
-              placeholder={
-                isGenerating ? 'Generating… type your next message' : 'Message the model…'
-              }
-              aria-label="Message"
-            />
-            {isGenerating ? (
-              <button
-                className="stop-button"
-                type="button"
-                onClick={stopGeneration}
-              >
-                <span aria-hidden="true" />
-                Stop
-              </button>
-            ) : (
-              <button
-                className="send-button"
-                type="button"
-                onClick={() => void sendMessage()}
-                disabled={!draft.trim()}
-                aria-label="Send message"
-              >
-                ↑
-              </button>
+          <div
+            className="composer"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              void addFiles([...event.dataTransfer.files])
+            }}
+          >
+            {(attachments.length > 0 || isAttaching) && (
+              <ul className="attachment-strip">
+                {attachments.map((attachment) => (
+                  <li key={attachment.id}>
+                    <img src={attachment.dataUrl} alt={attachment.name} />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(attachment.id)}
+                      aria-label={`Remove ${attachment.name}`}
+                    >
+                      ×
+                    </button>
+                    <small>{attachment.name}</small>
+                  </li>
+                ))}
+                {isAttaching && <li className="attachment-pending">Reading…</li>}
+              </ul>
             )}
+            <div className="composer-row">
+              <input
+                ref={fileInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                aria-label="Attach images or PDFs"
+                onChange={(event) => {
+                  void addFiles([...(event.target.files ?? [])])
+                  // Allows re-picking the same file after removing it.
+                  event.target.value = ''
+                }}
+              />
+              <button
+                className="icon-button attach-button"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isAttaching}
+                aria-label="Attach images or PDFs"
+                title="Attach images or PDFs"
+              >
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                  <path
+                    d="M6.2 10.7 11 5.9a2.8 2.8 0 1 1 4 4l-6.4 6.4a4 4 0 0 1-5.6-5.6l6-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onPaste={(event) => {
+                  const files = [...event.clipboardData.files]
+                  if (files.length) {
+                    event.preventDefault()
+                    void addFiles(files)
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    void sendMessage()
+                  }
+                }}
+                rows={1}
+                placeholder={
+                  isGenerating ? 'Generating… type your next message' : 'Message the model…'
+                }
+                aria-label="Message"
+              />
+              {isGenerating ? (
+                <button
+                  className="stop-button"
+                  type="button"
+                  onClick={stopGeneration}
+                >
+                  <span aria-hidden="true" />
+                  Stop
+                </button>
+              ) : (
+                <button
+                  className="send-button"
+                  type="button"
+                  onClick={() => void sendMessage()}
+                  disabled={!draft.trim() && !attachments.length}
+                  aria-label="Send message"
+                >
+                  ↑
+                </button>
+              )}
+            </div>
           </div>
           <p className="composer-hint">
-            Enter to send · Shift + Enter for a new line
+            Enter to send · Shift + Enter for a new line · attach, paste, or drop
+            images and PDFs
           </p>
         </div>
       </section>

@@ -93,6 +93,58 @@ describe('buildChatRequest', () => {
     ])
   })
 
+  it('sends attachments as image parts alongside the prompt text', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: 'What is in this?',
+        attachments: [
+          { id: 'a', name: 'shot.png', dataUrl: 'data:image/png;base64,AAA' },
+          { id: 'b', name: 'doc.pdf · page 1', dataUrl: 'data:image/jpeg;base64,BBB' },
+        ],
+      },
+    ]
+
+    expect(buildChatRequest(messages, settings).messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What is in this?' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,BBB' } },
+      ],
+    })
+  })
+
+  it('keeps an image-only turn that carries no text', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: '',
+        attachments: [
+          { id: 'a', name: 'shot.png', dataUrl: 'data:image/png;base64,AAA' },
+        ],
+      },
+    ]
+
+    expect(buildChatRequest(messages, settings).messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+      ],
+    })
+  })
+
+  it('leaves plain turns as string content', () => {
+    const messages: ChatMessage[] = [{ id: '1', role: 'user', content: 'Hi' }]
+
+    expect(buildChatRequest(messages, settings).messages[1]).toEqual({
+      role: 'user',
+      content: 'Hi',
+    })
+  })
+
   it('disables thinking mode through chat template kwargs', () => {
     const request = buildChatRequest([], {
       ...settings,
@@ -111,8 +163,8 @@ describe('headersFor', () => {
     })
   })
 
-  it('rejects an empty API key', () => {
-    expect(() => headersFor('   ')).toThrow('An API key is required')
+  it('omits the header when the server runs without a key', () => {
+    expect(headersFor('   ')).toEqual({ 'Content-Type': 'application/json' })
   })
 })
 

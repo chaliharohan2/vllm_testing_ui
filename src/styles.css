@@ -240,7 +240,8 @@ p {
   padding-top: 4px;
 }
 
-.message-body strong {
+/* Only the author label, never bold spans inside rendered Markdown. */
+.message-body > strong {
   display: block;
   margin-bottom: 8px;
   font-size: 12px;
@@ -252,7 +253,225 @@ p {
   font-size: 14px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+
+.plain-text {
+  margin: 0;
   white-space: pre-wrap;
+}
+
+.markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown .table-scroll,
+.markdown .code-block {
+  margin: 0 0 10px;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 20px 0 8px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+}
+
+.markdown h1 {
+  font-size: 19px;
+}
+
+.markdown h2 {
+  font-size: 17px;
+}
+
+.markdown h3 {
+  font-size: 15px;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 14px;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 22px;
+}
+
+.markdown li {
+  margin: 5px 0;
+}
+
+.markdown li > p {
+  margin: 0 0 6px;
+}
+
+.markdown li > p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown li > ul,
+.markdown li > ol {
+  margin: 4px 0;
+}
+
+.markdown li::marker {
+  color: #7d8a83;
+}
+
+.markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown strong {
+  font-weight: 700;
+}
+
+.markdown blockquote {
+  padding: 2px 0 2px 13px;
+  border-left: 3px solid #cbd7cf;
+  color: #55615a;
+}
+
+.markdown hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.markdown :not(pre) > code {
+  padding: 1.5px 5px;
+  border: 1px solid #e2e8e3;
+  border-radius: 5px;
+  background: #f2f5f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.87em;
+}
+
+.code-block {
+  overflow: hidden;
+  border: 1px solid #dde4de;
+  border-radius: 10px;
+  background: #fbfcfb;
+}
+
+.code-block-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid #e6ebe7;
+  background: #f3f6f3;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.code-block-bar button {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: #fff;
+  font: inherit;
+}
+
+.code-block-bar button:hover {
+  border-color: #bec9c1;
+  color: var(--ink);
+}
+
+.code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 11px 12px;
+}
+
+.code-block code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.markdown .katex {
+  font-size: 1.05em;
+}
+
+.markdown .katex-mathml {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+}
+
+/* Long derivations should scroll rather than widen the whole column. */
+.markdown .katex-display {
+  display: block;
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+  text-align: center;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown th,
+.markdown td {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.markdown th {
+  background: #f5f8f5;
+  font-weight: 700;
+}
+
+.markdown tr:last-child td {
+  border-bottom: 0;
+}
+
+.message-content.is-streaming .markdown > *:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--accent);
+  animation: blink 0.8s step-end infinite;
 }
 
 .reasoning-block {
@@ -331,16 +550,6 @@ p {
   animation-delay: 0.26s;
 }
 
-.stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 3px;
-  vertical-align: -2px;
-  background: var(--accent);
-  animation: blink 0.8s step-end infinite;
-}
-
 @keyframes bounce {
   0%,
   60%,
@@ -373,14 +582,121 @@ p {
 }
 
 .composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 10px 10px 10px 16px;
+  padding: 10px;
   border: 1px solid #cfd7d1;
   border-radius: 15px;
   background: #fff;
   box-shadow: 0 8px 28px rgba(25, 42, 33, 0.07);
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.attach-button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.attach-button:hover:not(:disabled) {
+  border-color: #bec9c1;
+  color: var(--ink);
+}
+
+.attach-button:disabled {
+  opacity: 0.45;
+}
+
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment-strip li {
+  position: relative;
+  width: 74px;
+}
+
+.attachment-strip img {
+  display: block;
+  width: 74px;
+  height: 74px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  object-fit: cover;
+  background: #f5f7f5;
+}
+
+.attachment-strip small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-strip li > button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 19px;
+  height: 19px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: #fff;
+  background: #38423d;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.attachment-pending {
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.message-attachments img {
+  display: block;
+  max-width: 168px;
+  max-height: 168px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f5f7f5;
 }
 
 .composer:focus-within {
@@ -393,7 +709,7 @@ p {
   max-height: 160px;
   flex: 1;
   resize: vertical;
-  padding: 8px 0 5px;
+  padding: 8px 4px 5px;
   border: 0;
   outline: 0;
   color: var(--ink);

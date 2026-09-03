@@ -8,13 +8,12 @@ import type {
 
 export const headersFor = (apiKey: string): HeadersInit => {
   const token = apiKey.trim()
-  if (!token) {
-    throw new Error('An API key is required')
-  }
 
   return {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+    // Servers started without `--api-key` reject requests that carry an
+    // Authorization header, so only send one when a key was supplied.
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
@@ -66,8 +65,23 @@ export const buildChatRequest = (
       // A turn that produced no visible text would otherwise be replayed as an
       // empty assistant message, which degrades the model's next answer.
       ...messages
-        .filter(({ content }) => content.trim())
-        .map(({ role, content }) => ({ role, content })),
+        .filter(
+          ({ content, attachments }) => content.trim() || attachments?.length,
+        )
+        .map(({ role, content, attachments }) => ({
+          role,
+          content: attachments?.length
+            ? [
+                ...(content.trim()
+                  ? [{ type: 'text' as const, text: content }]
+                  : []),
+                ...attachments.map(({ dataUrl }) => ({
+                  type: 'image_url' as const,
+                  image_url: { url: dataUrl },
+                })),
+              ]
+            : content,
+        })),
     ],
     stream: true,
     stream_options: { include_usage: true },
