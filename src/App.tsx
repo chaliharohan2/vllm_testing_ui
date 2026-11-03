@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  fetchBrowserHealth,
+  formatBrowserTask,
+  streamBrowserTask,
+} from './api/browser'
 import { fetchModels, streamChat } from './api/vllm'
 import { Markdown } from './components/Markdown'
 import { SettingsPanel } from './components/SettingsPanel'
 import { attachmentsFromFile, MAX_PDF_PAGES } from './lib/attachments'
-import type { Attachment, ChatMessage, GenerationSettings } from './types'
+import type {
+  Attachment,
+  BrowserStep,
+  ChatMessage,
+  GenerationSettings,
+} from './types'
 import './styles.css'
 
 const initialSettings: GenerationSettings = {
@@ -40,6 +50,8 @@ function App() {
   const [error, setError] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isAttaching, setIsAttaching] = useState(false)
+  const [browserEnabled, setBrowserEnabled] = useState(false)
+  const [showBrowser, setShowBrowser] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -128,9 +140,35 @@ function App() {
   const removeAttachment = (id: string) =>
     setAttachments((current) => current.filter((item) => item.id !== id))
 
+  const toggleBrowser = async () => {
+    if (browserEnabled) {
+      setBrowserEnabled(false)
+      return
+    }
+    setError('')
+    try {
+      const health = await fetchBrowserHealth()
+      if (!health.ok || !health.chromium) {
+        setError(
+          'Chromium is not installed for the browser agent. From the project folder run: playwright install chromium',
+        )
+        return
+      }
+      setBrowserEnabled(true)
+    } catch {
+      setError(
+        'The browser agent is not running. Start the app with npm run dev so it can launch the agent.',
+      )
+    }
+  }
+
   const sendMessage = async () => {
     const content = draft.trim()
     if ((!content && !attachments.length) || isGenerating) return
+    if (browserEnabled && attachments.length) {
+      setError('The browser agent reads web pages, so image and PDF attachments stay off while Browse is on.')
+      return
+    }
     if (!settings.model.trim()) {
       setError('Choose or enter a model ID before sending a message.')
       setSettingsOpen(true)
@@ -154,6 +192,7 @@ function App() {
     let receivedText = ''
     let receivedReasoning = ''
     let finishReason = ''
+    let browserStepCount = 0
 
     abortRef.current = controller
     setDraft('')
@@ -171,22 +210,44 @@ function App() {
       )
 
     try {
-      await streamChat({
-        messages: context,
-        settings,
-        signal: controller.signal,
-        onContent: (text) => {
-          receivedText += text
-          updateAssistant({ content: receivedText })
-        },
-        onReasoning: (text) => {
-          receivedReasoning += text
-          updateAssistant({ reasoning: receivedReasoning })
-        },
-        onFinish: (reason) => {
-          finishReason = reason
-        },
-      })
+      if (browserEnabled) {
+        const steps: BrowserStep[] = []
+        await streamBrowserTask({
+          task: formatBrowserTask(context),
+          model: settings.model.trim(),
+          apiKey: settings.apiKey,
+          showBrowser,
+          signal: controller.signal,
+          onStatus: (message) => updateAssistant({ activity: message }),
+          onStep: (step) => {
+            steps.push(step)
+            browserStepCount = steps.length
+            updateAssistant({ activity: '', browserSteps: [...steps] })
+          },
+          onDone: (result) => {
+            receivedText = result.trim() || 'The browser agent finished without a written answer.'
+            updateAssistant({ activity: '', content: receivedText })
+          },
+        })
+        finishReason = 'stop'
+      } else {
+        await streamChat({
+          messages: context,
+          settings,
+          signal: controller.signal,
+          onContent: (text) => {
+            receivedText += text
+            updateAssistant({ content: receivedText })
+          },
+          onReasoning: (text) => {
+            receivedReasoning += text
+            updateAssistant({ reasoning: receivedReasoning })
+          },
+          onFinish: (reason) => {
+            finishReason = reason
+          },
+        })
+      }
 
       if (finishReason === 'length' && !receivedText) {
         updateAssistant({
@@ -202,7 +263,7 @@ function App() {
         controller.signal.aborted ||
         (caught instanceof DOMException && caught.name === 'AbortError')
 
-      if (!receivedText && !receivedReasoning) {
+      if (!receivedText && !receivedReasoning && browserStepCount === 0) {
         setMessages((current) =>
           current.filter((message) => message.id !== assistantId),
         )
@@ -313,6 +374,29 @@ function App() {
                           ))}
                         </ul>
                       ) : null}
+                      {message.browserSteps?.length ? (
+                        <ol className="browser-steps">
+                          {message.browserSteps.map((step) => (
+                            <li key={step.step}>
+                              <div className="browser-step-heading">
+                                <strong>Step {step.step}</strong>
+                                {step.url ? <span>{step.url}</span> : null}
+                              </div>
+                              {step.goal ? <p>{step.goal}</p> : null}
+                              {step.actions.length ? (
+                                <ul>
+                                  {step.actions.map((action) => (
+                                    <li key={action}>{action}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                      {isStreaming && message.activity ? (
+                        <p className="browser-activity">{message.activity}</p>
+                      ) : null}
                       {message.reasoning && (
                         <details className="reasoning-block">
                           <summary>
@@ -396,6 +480,28 @@ function App() {
                 {isAttaching && <li className="attachment-pending">Reading…</li>}
               </ul>
             )}
+            <div className="composer-tools">
+              <button
+                className={`browser-toggle ${browserEnabled ? 'is-on' : ''}`}
+                type="button"
+                aria-pressed={browserEnabled}
+                onClick={() => void toggleBrowser()}
+                disabled={isGenerating}
+              >
+                Browse
+              </button>
+              {browserEnabled ? (
+                <label className="browser-window-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showBrowser}
+                    onChange={(event) => setShowBrowser(event.target.checked)}
+                    disabled={isGenerating}
+                  />
+                  Show window
+                </label>
+              ) : null}
+            </div>
             <div className="composer-row">
               <input
                 ref={fileInputRef}
@@ -446,7 +552,13 @@ function App() {
                 }}
                 rows={1}
                 placeholder={
-                  isGenerating ? 'Generating… type your next message' : 'Message the model…'
+                  isGenerating
+                    ? browserEnabled
+                      ? 'The browser agent is working…'
+                      : 'Generating… type your next message'
+                    : browserEnabled
+                      ? 'Ask the model to look something up on the web…'
+                      : 'Message the model…'
                 }
                 aria-label="Message"
               />
@@ -473,8 +585,9 @@ function App() {
             </div>
           </div>
           <p className="composer-hint">
-            Enter to send · Shift + Enter for a new line · attach, paste, or drop
-            images and PDFs
+            {browserEnabled
+              ? 'Browse is on · the model drives a local browser, then answers here · Enter to send'
+              : 'Enter to send · Shift + Enter for a new line · attach, paste, or drop images and PDFs'}
           </p>
         </div>
       </section>

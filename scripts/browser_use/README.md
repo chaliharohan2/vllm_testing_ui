@@ -43,9 +43,14 @@ vllm serve cyankiwi/Qwen3.8-27B-AWQ-INT4 --port 8000 \
     --enable-auto-tool-choice --tool-call-parser qwen3_xml
 ```
 
-No `--api-key` is set on the server, so the script never sends a real
-`Authorization` token — it passes a throwaway placeholder string only
-because the OpenAI Python client refuses to initialize with `api_key=None`.
+If your server has no `--api-key` set, nothing extra is needed — a
+placeholder is sent only because the OpenAI Python client refuses to
+initialize with `api_key=None`. If your server *does* require a key (e.g. a
+different box than `192.168.0.147`), the agent picks one up the same way the
+chat already does: whatever is typed into the Settings panel's **API key**
+field is sent with each browser-agent request, falling back to
+`VLLM_API_KEY` in `.env`, then the placeholder. From the CLI, pass
+`--api-key` instead.
 
 One thing worth knowing if you change the model: `use_vision=False` is
 hard-set in `run_agent.py` because `cyankiwi/Qwen3.8-27B-AWQ-INT4` has no
@@ -65,7 +70,25 @@ playwright install chromium   # one-time, ~190MB, downloads a standalone Chromiu
 `VLLM_BASE_URL` is read from the repo's `.env` (same variable the React UI
 uses), so it already points at the right server.
 
-## Running it
+## Using it from the chat
+
+`npm run dev` starts Vite and this folder's `server.py` together. Vite
+proxies `/browser/*` to the Python process on `127.0.0.1:8787`.
+
+In the chat composer, turn on **Browse**, then send a request the way you
+normally would ("open the vLLM docs and tell me the current install
+command"). The same Qwen model plans each browser step; the page it is on,
+what it is about to do, and the final answer show up in the assistant
+bubble. **Show window** opens a visible Chromium window instead of running
+headless. Stop cancels the run. Follow-up messages include the earlier
+turns, so you can ask it to keep going on the same topic.
+
+Only one browser task runs at a time. Attachments stay on the normal chat
+path — turn Browse off to send images or PDFs.
+
+The standalone script below is the same agent without the chat UI.
+
+## Running it from the terminal
 
 ```bash
 python scripts/browser_use/run_agent.py

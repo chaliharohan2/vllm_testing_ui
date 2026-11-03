@@ -68,14 +68,7 @@ def vllm_base_url() -> str:
     return base if base.endswith("/v1") else f"{base}/v1"
 
 
-def find_chromium_executable() -> str | None:
-    """Locate the standalone Chromium binary from `playwright install chromium`.
-
-    browser-use's own browser harness (CDP-based, no Playwright dependency at
-    runtime) expects to find a system Chrome/Chromium -- it doesn't download
-    one itself. We reuse Playwright purely as an installer/locator for a
-    sandboxed Chromium build so no system package install is needed.
-    """
+def _playwright_chromium() -> str | None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -88,27 +81,52 @@ def find_chromium_executable() -> str | None:
         return None
 
 
-def build_llm(model: str) -> ChatOpenAI:
+def find_chromium_executable() -> str | None:
+    """Locate the standalone Chromium binary from `playwright install chromium`.
+
+    browser-use's own browser harness (CDP-based, no Playwright dependency at
+    runtime) expects to find a system Chrome/Chromium -- it doesn't download
+    one itself. We reuse Playwright purely as an installer/locator for a
+    sandboxed Chromium build so no system package install is needed.
+
+    A leftover PLAYWRIGHT_BROWSERS_PATH (some sandboxes set one) would hide
+    the copy installed into the normal ~/.cache/ms-playwright directory, so
+    fall back to that default location when the override does not contain a
+    browser.
+    """
+    found = _playwright_chromium()
+    if found or not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        return found
+    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)
+    return _playwright_chromium()
+
+
+def vllm_api_key(override: str | None = None) -> str:
+    """Pick an API key the same way src/api/vllm.ts does: prefer whatever was
+    typed into the chat's Settings panel (passed through from the UI), then
+    fall back to VLLM_API_KEY from .env, then a placeholder.
+
+    The OpenAI client library refuses to start with api_key=None, so a
+    placeholder is used for servers that don't check it (started without
+    --api-key) -- but a server that *does* check it (like 103.48.50.161)
+    needs the real key or every request comes back 401.
+    """
+    key = (override or "").strip() or os.environ.get("VLLM_API_KEY", "").strip()
+    return key or "not-needed"
+
+
+def build_llm(model: str, api_key: str | None = None) -> ChatOpenAI:
     return ChatOpenAI(
         model=model,
         base_url=vllm_base_url(),
-        # The vLLM server has no --api-key configured, so this value is never
-        # actually checked server-side -- it only exists because the OpenAI
-        # client library refuses to start with api_key=None.
-        api_key="not-needed",
+        api_key=vllm_api_key(api_key),
         temperature=0.3,
         max_completion_tokens=4096,
     )
 
 
-async def run(task: str, model: str, executable_path: str, headless: bool | None, max_steps: int) -> int:
-    llm = build_llm(model)
-    print(f"-> vLLM endpoint : {llm.base_url}")
-    print(f"-> Model         : {llm.model}")
-    print(f"-> Chromium      : {executable_path}")
-    print(f"-> Task          : {task}\n")
-
-    browser_session = BrowserSession(
+def build_browser_session(executable_path: str, headless: bool | None) -> BrowserSession:
+    return BrowserSession(
         browser_profile=BrowserProfile(
             executable_path=executable_path,
             headless=headless,
@@ -128,15 +146,42 @@ async def run(task: str, model: str, executable_path: str, headless: bool | None
         )
     )
 
-    agent = Agent(
+
+def build_agent(
+    task: str,
+    model: str,
+    executable_path: str,
+    headless: bool | None,
+    api_key: str | None = None,
+    **agent_kwargs: object,
+) -> Agent:
+    return Agent(
         task=task,
-        llm=llm,
-        browser_session=browser_session,
+        llm=build_llm(model, api_key),
+        browser_session=build_browser_session(executable_path, headless),
         # cyankiwi/Qwen3.8-27B-AWQ-INT4 is a text-only build (no vision
         # encoder), so drive the agent off the DOM/text page representation
         # instead of sending it screenshots it can't actually see.
         use_vision=False,
+        **agent_kwargs,
     )
+
+
+async def run(
+    task: str,
+    model: str,
+    executable_path: str,
+    headless: bool | None,
+    max_steps: int,
+    api_key: str | None = None,
+) -> int:
+    llm = build_llm(model, api_key)
+    print(f"-> vLLM endpoint : {llm.base_url}")
+    print(f"-> Model         : {llm.model}")
+    print(f"-> Chromium      : {executable_path}")
+    print(f"-> Task          : {task}\n")
+
+    agent = build_agent(task, model, executable_path, headless, api_key)
 
     history = await agent.run(max_steps=max_steps)
 
@@ -150,6 +195,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("task", nargs="?", default=DEFAULT_TASK, help="Natural-language task for the agent.")
     parser.add_argument("--model", default=os.environ.get("VLLM_MODEL", DEFAULT_MODEL))
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Overrides VLLM_API_KEY from .env for servers that require one.",
+    )
     parser.add_argument("--max-steps", type=int, default=15)
     parser.add_argument(
         "--headful",
@@ -171,7 +221,9 @@ def main() -> None:
         )
         sys.exit(1)
 
-    exit_code = asyncio.run(run(args.task, args.model, executable_path, args.headless, args.max_steps))
+    exit_code = asyncio.run(
+        run(args.task, args.model, executable_path, args.headless, args.max_steps, args.api_key)
+    )
     sys.exit(exit_code)
 
 
