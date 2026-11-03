@@ -1,0 +1,15 @@
+# Experimental deps for the browser-use + Qwen/vLLM test harness.
+# Install into the project's existing .venv:
+#   source .venv/bin/activate
+#   pip install -r scripts/browser_use/requirements.txt
+#   playwright install chromium
+#
+# Both packages are open source / free:
+#   browser-use  - MIT licensed agent framework that drives a real Chromium
+#                  tab via CDP, asks an LLM "what should I click/type next"
+#                  each step, and exposes that loop as a single task() call.
+#   playwright    - Apache-2.0 licensed; we only use it to download a
+#                  standalone Chromium binary (browser-use's own CDP harness
+#                  needs *some* Chrome/Chromium executable on the machine).
+browser-use>=0.13,<0.14
+playwright>=1.48

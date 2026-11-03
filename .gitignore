@@ -29,3 +29,8 @@ dist-ssr
 
 # Package directories
 .venv/
+
+# browser-use experiment (branch: experiment/browser-use-qwen) config/profile dir
+.browseruse/
+__pycache__/
+*.pyc
