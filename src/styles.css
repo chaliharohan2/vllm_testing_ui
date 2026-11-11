@@ -589,6 +589,97 @@ p {
   box-shadow: 0 8px 28px rgba(25, 42, 33, 0.07);
 }
 
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 2px 8px;
+}
+
+.browser-toggle {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.browser-toggle.is-on {
+  border-color: transparent;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.browser-toggle:hover:not(:disabled) {
+  border-color: #bec9c1;
+  color: var(--ink);
+}
+
+.browser-window-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.browser-activity {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.browser-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.browser-steps > li {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f9f7;
+}
+
+.browser-step-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.browser-step-heading strong {
+  font-size: 12px;
+}
+
+.browser-step-heading span,
+.browser-steps p,
+.browser-steps ul {
+  color: #5c6862;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.browser-step-heading span {
+  overflow-wrap: anywhere;
+}
+
+.browser-steps p {
+  margin: 4px 0 0;
+}
+
+.browser-steps ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
 .composer-row {
   display: flex;
   align-items: flex-end;

@@ -7,6 +7,15 @@ export interface Attachment {
   dataUrl: string
 }
 
+export interface BrowserStep {
+  step: number
+  url: string
+  evaluation: string
+  memory: string
+  goal: string
+  actions: string[]
+}
+
 export interface ChatMessage {
   id: string
   role: ChatRole
@@ -14,6 +23,9 @@ export interface ChatMessage {
   attachments?: Attachment[]
   reasoning?: string
   notice?: string
+  /** Live progress while a browser-agent turn is running. */
+  activity?: string
+  browserSteps?: BrowserStep[]
 }
 
 export interface GenerationSettings {

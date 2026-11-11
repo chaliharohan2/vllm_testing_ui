@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchBrowserHealth, streamBrowserTask } from './api/browser'
 import { fetchModels, streamChat } from './api/vllm'
 import { attachmentsFromFile } from './lib/attachments'
 import App from './App'
@@ -10,6 +11,13 @@ vi.mock('./api/vllm', () => ({
   streamChat: vi.fn(),
 }))
 
+vi.mock('./api/browser', () => ({
+  fetchBrowserHealth: vi.fn(),
+  formatBrowserTask: (messages: { role: string; content: string }[]) =>
+    messages.at(-1)?.content ?? '',
+  streamBrowserTask: vi.fn(),
+}))
+
 vi.mock('./lib/attachments', () => ({
   attachmentsFromFile: vi.fn(),
   MAX_PDF_PAGES: 8,
@@ -17,6 +25,8 @@ vi.mock('./lib/attachments', () => ({
 
 const mockedFetchModels = vi.mocked(fetchModels)
 const mockedStreamChat = vi.mocked(streamChat)
+const mockedBrowserHealth = vi.mocked(fetchBrowserHealth)
+const mockedBrowserTask = vi.mocked(streamBrowserTask)
 const mockedAttachmentsFromFile = vi.mocked(attachmentsFromFile)
 
 const waitForModel = async () => {
@@ -37,6 +47,13 @@ describe('App', () => {
       onContent('Model answer')
     })
     mockedAttachmentsFromFile.mockReset()
+    mockedBrowserHealth.mockResolvedValue({
+      ok: true,
+      chromium: '/tmp/chrome',
+      busy: false,
+      vllm: 'http://127.0.0.1:8000/v1',
+    })
+    mockedBrowserTask.mockReset()
   })
 
   it('sends previous user and assistant messages as context', async () => {
@@ -179,6 +196,47 @@ describe('App', () => {
     expect(container.querySelectorAll('.typing-indicator')).toHaveLength(1)
     expect(screen.getByText('Reasoning')).toBeInTheDocument()
     expect(screen.queryByText(/thinking…/)).not.toBeInTheDocument()
+  })
+
+  it('sends the message to the browser agent when Browse is on', async () => {
+    const user = userEvent.setup()
+    mockedBrowserTask.mockImplementation(async ({ onStatus, onStep, onDone }) => {
+      onStatus('Starting the browser…')
+      onStep({
+        step: 1,
+        url: 'https://example.com',
+        evaluation: '',
+        memory: '',
+        goal: 'Read the heading',
+        actions: ['navigate(url=https://example.com)'],
+      })
+      onDone('The heading is Example Domain.')
+    })
+
+    render(<App />)
+    await waitForModel()
+
+    await user.click(screen.getByRole('button', { name: 'Browse' }))
+    expect(screen.getByRole('button', { name: 'Browse' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await user.type(screen.getByLabelText('Message'), 'Open example.com')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('The heading is Example Domain.')).toBeInTheDocument()
+    expect(screen.getByText('Step 1')).toBeInTheDocument()
+    expect(screen.getByText('navigate(url=https://example.com)')).toBeInTheDocument()
+    expect(mockedStreamChat).not.toHaveBeenCalled()
+    expect(mockedBrowserTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: 'Open example.com',
+        model: 'model-a',
+        apiKey: '',
+        showBrowser: false,
+      }),
+    )
   })
 
   it('sends a PDF as rasterised page images', async () => {
