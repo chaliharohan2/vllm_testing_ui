@@ -125,6 +125,37 @@ export function SettingsPanel({
           </label>
 
           <label>
+            <span>Working folder</span>
+            <input
+              aria-label="Working folder"
+              value={settings.workdir}
+              onChange={(event) => update('workdir', event.target.value)}
+              placeholder="workspace/ in this repo"
+              disabled={disabled}
+            />
+            <small>
+              Absolute path the file and terminal tools work in. File tools
+              cannot reach outside it.
+            </small>
+          </label>
+
+          <label>
+            <span>Max tool steps per message</span>
+            <input
+              aria-label="Max tool steps"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={settings.maxSteps}
+              onChange={(event) =>
+                update('maxSteps', numericValue(event.target.value, settings.maxSteps))
+              }
+              disabled={disabled}
+            />
+          </label>
+
+          <label>
             <span>System prompt</span>
             <textarea
               rows={5}

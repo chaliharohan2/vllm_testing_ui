@@ -9,6 +9,8 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { normalizeMarkdown } from '../lib/markdown'
+import { ARTIFACT_HREF } from '../lib/parts'
+import { ArtifactChip } from './artifacts'
 import 'katex/dist/katex.min.css'
 
 const plainText = (node: ReactNode): string => {
@@ -59,13 +61,27 @@ const rehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
   [rehypeKatex, { errorColor: '#26312b' }],
 ]
 
-const components = {
-  pre: CodeBlock,
-  a: ({ children, ...props }: ComponentPropsWithoutRef<'a'>) => (
-    <a {...props} target="_blank" rel="noopener noreferrer">
+function Link({ children, href, ...props }: ComponentPropsWithoutRef<'a'>) {
+  const placeholder = ARTIFACT_HREF.exec(href ?? '')
+  if (placeholder) {
+    return (
+      <ArtifactChip
+        id={placeholder[1]}
+        version={Number(placeholder[2])}
+        label={plainText(children)}
+      />
+    )
+  }
+  return (
+    <a {...props} href={href} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
-  ),
+  )
+}
+
+const components = {
+  pre: CodeBlock,
+  a: Link,
   table: ({ children, ...props }: ComponentPropsWithoutRef<'table'>) => (
     <div className="table-scroll">
       <table {...props}>{children}</table>

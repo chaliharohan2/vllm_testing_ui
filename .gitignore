@@ -34,3 +34,6 @@ dist-ssr
 .browseruse/
 __pycache__/
 *.pyc
+# agent server: chats database and the default working folder
+data/
+workspace/

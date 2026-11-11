@@ -72,19 +72,13 @@ uses), so it already points at the right server.
 
 ## Using it from the chat
 
-`npm run dev` starts Vite and this folder's `server.py` together. Vite
-proxies `/browser/*` to the Python process on `127.0.0.1:8787`.
+The agent server (`agent_server/`) exposes this agent as the **Browser** tool
+(`browse_web`). Turn it on with the tool chips above the composer; the chat
+model decides when to hand a task to it, and each browser step shows up as
+progress on the tool card. **Show window** opens a visible Chromium window
+instead of running headless. Stop cancels the run.
 
-In the chat composer, turn on **Browse**, then send a request the way you
-normally would ("open the vLLM docs and tell me the current install
-command"). The same Qwen model plans each browser step; the page it is on,
-what it is about to do, and the final answer show up in the assistant
-bubble. **Show window** opens a visible Chromium window instead of running
-headless. Stop cancels the run. Follow-up messages include the earlier
-turns, so you can ask it to keep going on the same topic.
-
-Only one browser task runs at a time. Attachments stay on the normal chat
-path — turn Browse off to send images or PDFs.
+Only one browser task runs at a time.
 
 The standalone script below is the same agent without the chat UI.
 

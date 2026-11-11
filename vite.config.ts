@@ -4,34 +4,31 @@ import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 
-const BROWSER_AGENT_PORT = '8787'
+const AGENT_SERVER_PORT = '8787'
 
-let browserAgent: ChildProcess | undefined
+let agentServer: ChildProcess | undefined
 
-const browserAgentPlugin = (): Plugin => ({
-  name: 'browser-agent',
+const agentServerPlugin = (): Plugin => ({
+  name: 'agent-server',
   configureServer(server) {
     const python = path.resolve('.venv/bin/python')
-    const script = path.resolve('scripts/browser_use/server.py')
+    const script = path.resolve('agent_server/app.py')
     if (!existsSync(python) || !existsSync(script)) {
       server.config.logger.warn(
-        'Browser agent was not started. Install the experiment deps into .venv first.',
+        'Agent server was not started. Install agent_server/requirements.txt into .venv first.',
       )
       return
     }
-    if (browserAgent && browserAgent.exitCode === null && !browserAgent.killed) return
+    if (agentServer && agentServer.exitCode === null && !agentServer.killed) return
 
-    const env = { ...process.env, BROWSER_AGENT_PORT }
+    const env: NodeJS.ProcessEnv = { ...process.env, AGENT_SERVER_PORT }
     // Let Playwright use its default browser cache. A parent process sometimes
     // points this at a temporary directory that does not contain Chromium.
     delete env.PLAYWRIGHT_BROWSERS_PATH
-    browserAgent = spawn(python, [script], {
-      stdio: 'inherit',
-      env,
-    })
+    agentServer = spawn(python, [script], { stdio: 'inherit', env })
     const stop = () => {
-      if (browserAgent && !browserAgent.killed) browserAgent.kill()
-      browserAgent = undefined
+      if (agentServer && !agentServer.killed) agentServer.kill()
+      agentServer = undefined
     }
     server.httpServer?.once('close', stop)
   },
@@ -42,7 +39,7 @@ export default defineConfig(({ mode }) => {
   const target = env.VLLM_BASE_URL || 'http://localhost:8000'
 
   return {
-    plugins: [react(), browserAgentPlugin()],
+    plugins: [react(), agentServerPlugin()],
     server: {
       proxy: {
         '/v1': {
@@ -50,15 +47,17 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq, req) => {
-              const authorization = req.headers.authorization
+              const authorization =
+                req.headers.authorization ||
+                (env.VLLM_API_KEY ? `Bearer ${env.VLLM_API_KEY}` : undefined)
               if (authorization) {
                 proxyReq.setHeader('Authorization', authorization)
               }
             })
           },
         },
-        '/browser': {
-          target: `http://127.0.0.1:${BROWSER_AGENT_PORT}`,
+        '/api': {
+          target: `http://127.0.0.1:${AGENT_SERVER_PORT}`,
           changeOrigin: true,
           timeout: 0,
           proxyTimeout: 0,
